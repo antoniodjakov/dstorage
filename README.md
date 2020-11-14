@@ -1,2 +1,5 @@
-# dstorage
-Blockchain Dropbox client, upload your files to IPFS and store the hash to a blockchain
+## ``` Decentralized File Storage. ```
+
+
+## 🔧 Project Diagram:
+![Project Diagram](https://i.gyazo.com/2738ea6743a40036756b1b5714ab9fa8.png)
