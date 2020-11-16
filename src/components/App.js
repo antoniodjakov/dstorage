@@ -1,4 +1,4 @@
-//import DStorage from '../abis/DStorage.json'
+import DStorage from '../abis/DStorage.json'
 import React, { Component } from 'react';
 import Navbar from './Navbar'
 import Main from './Main'
@@ -6,6 +6,8 @@ import Web3 from 'web3';
 import './App.css';
 
 //Declare IPFS
+const ipfsClient = require('ipfs-http-client')
+const ipfs = ipfsClient({host: 'ipfs.infura.io', port:5001, protocol:'https'})
 
 class App extends Component {
 
@@ -14,57 +16,127 @@ class App extends Component {
     await this.loadBlockchainData()
   }
 
+//Connects to blockchain
   async loadWeb3() {
-    //Setting up Web3
+    if (window.ethereum) {
+      window.web3 = new Web3(window.ethereum)
+      await window.ethereum.enable()
+    } else if (window.web3) {
+      window.web = new Web3(window.web3.currentProvider)
+    } else {
+      window.alert('Non-Ethereum browser detected. Try MetaMask!')
+    }
   }
 
   async loadBlockchainData() {
     //Declare Web3
+    const web3 = window.web3
 
     //Load account
+    const accounts = await web3.eth.getAccounts()
 
+    //Add the account to state
+    this.setState({ account: accounts[0] })
+    
     //Network ID
+    const networkId = await web3.eth.net.getId() //5777 Ganache
+    const networkData = DStorage.networks[networkId] //DStorage.json
 
     //IF got connection, get data from contracts
+    if (networkData) {
       //Assign contract
+      const dstorage = new web3.eth.Contract(DStorage.abi, networkData.address)
+      this.setState({ dstorage })
 
       //Get files amount
+      const filesCount = await dstorage.methods.fileCount().call()
+      this.setState({filesCount})
 
       //Load files&sort by the newest
+      for(var i = filesCount; i>=1; i--) {
+        const file = await dstorage.methods.files(i).call()
+        console.log(file)
+        this.setState({
+          files: [...this.state.files, file]
+        })
+      } 
+    } else {
+        window.alert('Cannot detect DStorage contract. Check your MetaMask network.') 
+      }
 
-    //Else
-      //alert Error
+      this.setState({loading: false})
 
   }
 
   // Get file from user
   captureFile = event => {
+    event.preventDefault()
+    
+    const file = event.target.files[0] // get file from form field
+    const reader = new window.FileReader()
+
+    reader.readAsArrayBuffer(file)
+    reader.onloadend = () => {
+      this.setState({
+        buffer: Buffer(reader.result),
+        type: file.type,
+        name: file.name
+      })
+      console.log('buffer', this.state.buffer)
+    }
   }
 
 
   //Upload File
   uploadFile = description => {
 
-    //Add file to the IPFS
+    console.log('Submitting file to IPFS...')
 
-      //Check If error
-        //Return error
+    //Add file to the IPFS
+    ipfs.add(this.state.buffer, (error, result) => {
+      console.log('ipfs result', result)
+
+      //Check for errors
+      if (error) {
+        console.error(error)
+        return
+      }
 
       //Set state to loading
+      this.setState({loading: true})
 
-      //Assign value for the file without extension
-
-      //Call smart contract uploadFile function 
-
+    // Assign value for the file without extension
+      if(this.state.type === ''){
+        this.setState({type: 'none'})
+      }
+      this.state.dstorage.methods.uploadFile(result[0].hash, result[0].size, this.state.type, this.state.name, description).send({ from: this.state.account }).on('transactionHash', (hash) => {
+        this.setState({
+         loading: false,
+         type: null,
+         name: null
+       })
+       window.location.reload()
+      }).on('error', (e) =>{
+        window.alert('Error')
+        this.setState({loading: false})
+      })
+    })
   }
-
   //Set states
   constructor(props) {
     super(props)
     this.state = {
+      account: '',
+      dstorage: null,
+      files: [],
+      loading: false,
+      type: null,
+      name: null
     }
 
     //Bind functions
+    this.uploadFile = this.uploadFile.bind(this)
+    this.captureFile = this.captureFile.bind(this)
   }
 
   render() {
